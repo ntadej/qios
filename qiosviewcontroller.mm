@@ -462,7 +462,11 @@
     UIStatusBarStyle oldStatusBarStyle = self.preferredStatusBarStyle;
     if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint) {
         if (focusWindow->flags() & Qt::MacWindowToolBarButtonHint) {
-            self.preferredStatusBarStyle = UIStatusBarStyleDefault;
+            if (@available(iOS 13, *)) {
+                self.preferredStatusBarStyle = UIStatusBarStyleDarkContent;
+            } else {
+                self.preferredStatusBarStyle = UIStatusBarStyleDefault;
+            }
         } else {
             self.preferredStatusBarStyle = UIStatusBarStyleLightContent;
         }
