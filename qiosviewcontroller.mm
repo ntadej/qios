@@ -468,10 +468,15 @@
     // -------------- Status bar style and visbility ---------------
 
     UIStatusBarStyle oldStatusBarStyle = self.preferredStatusBarStyle;
-    if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint)
-        self.preferredStatusBarStyle = UIStatusBarStyleDefault;
-    else
+    if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint) {
+        if (focusWindow->flags() & Qt::MacWindowToolBarButtonHint) {
+            self.preferredStatusBarStyle = UIStatusBarStyleDefault;
+        } else {
+            self.preferredStatusBarStyle = UIStatusBarStyleLightContent;
+        }
+    } else {
         self.preferredStatusBarStyle = UIStatusBarStyleLightContent;
+    }
 
     if (self.preferredStatusBarStyle != oldStatusBarStyle)
         [self setNeedsStatusBarAppearanceUpdate];
