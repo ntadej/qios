@@ -161,12 +161,11 @@
 
 // -------------------------------------------------------------------------
 
-@implementation QIOSTextInputResponder {
+@implementation QIOSTextResponder {
+    @public
     QT_PREPEND_NAMESPACE(QIOSInputContext) *m_inputContext;
     QT_PREPEND_NAMESPACE(QInputMethodQueryEvent) *m_configuredImeState;
-    QString m_markedText;
     BOOL m_inSendEventToFocusObject;
-    BOOL m_inSelectionChange;
 }
 
 - (instancetype)initWithInputContext:(QT_PREPEND_NAMESPACE(QIOSInputContext) *)inputContext
@@ -174,132 +173,22 @@
     if (!(self = [self init]))
         return self;
 
-    m_inSendEventToFocusObject = NO;
-    m_inSelectionChange = NO;
     m_inputContext = inputContext;
-
-    m_configuredImeState = new QInputMethodQueryEvent(m_inputContext->imeState().currentState);
-    QVariantMap platformData = m_configuredImeState->value(Qt::ImPlatformData).toMap();
-    Qt::InputMethodHints hints = Qt::InputMethodHints(m_configuredImeState->value(Qt::ImHints).toUInt());
-
-    Qt::EnterKeyType enterKeyType = Qt::EnterKeyType(m_configuredImeState->value(Qt::ImEnterKeyType).toUInt());
-
-    switch (enterKeyType) {
-    case Qt::EnterKeyReturn:
-        self.returnKeyType = UIReturnKeyDefault;
-        break;
-    case Qt::EnterKeyDone:
-        self.returnKeyType = UIReturnKeyDone;
-        break;
-    case Qt::EnterKeyGo:
-        self.returnKeyType = UIReturnKeyGo;
-        break;
-    case Qt::EnterKeySend:
-        self.returnKeyType = UIReturnKeySend;
-        break;
-    case Qt::EnterKeySearch:
-        self.returnKeyType = UIReturnKeySearch;
-        break;
-    case Qt::EnterKeyNext:
-        self.returnKeyType = UIReturnKeyNext;
-        break;
-    default:
-        self.returnKeyType = (hints & Qt::ImhMultiLine) ? UIReturnKeyDefault : UIReturnKeyDone;
-        break;
-    }
-
-    self.secureTextEntry = BOOL(hints & Qt::ImhHiddenText);
-    self.autocorrectionType = (hints & Qt::ImhNoPredictiveText) ?
-                UITextAutocorrectionTypeNo : UITextAutocorrectionTypeDefault;
-    self.spellCheckingType = (hints & Qt::ImhNoPredictiveText) ?
-                UITextSpellCheckingTypeNo : UITextSpellCheckingTypeDefault;
-
-    if (hints & Qt::ImhUppercaseOnly)
-        self.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
-    else if (hints & Qt::ImhNoAutoUppercase)
-        self.autocapitalizationType = UITextAutocapitalizationTypeNone;
-    else
-        self.autocapitalizationType = UITextAutocapitalizationTypeSentences;
-
-    if (hints & Qt::ImhUrlCharactersOnly)
-        self.keyboardType = UIKeyboardTypeURL;
-    else if (hints & Qt::ImhEmailCharactersOnly)
-        self.keyboardType = UIKeyboardTypeEmailAddress;
-    else if (hints & Qt::ImhDigitsOnly)
-        self.keyboardType = UIKeyboardTypeNumberPad;
-    else if (hints & Qt::ImhFormattedNumbersOnly)
-        self.keyboardType = UIKeyboardTypeDecimalPad;
-    else if (hints & Qt::ImhDialableCharactersOnly)
-        self.keyboardType = UIKeyboardTypePhonePad;
-    else if (hints & Qt::ImhLatinOnly)
-        self.keyboardType = UIKeyboardTypeASCIICapable;
-    else if (hints & Qt::ImhPreferNumbers)
-        self.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
-    else
-        self.keyboardType = UIKeyboardTypeDefault;
-
-    if (UIView *inputView = static_cast<UIView *>(platformData.value(kImePlatformDataInputView).value<void *>()))
-        self.inputView = [[[WrapperView alloc] initWithView:inputView] autorelease];
-    if (UIView *accessoryView = static_cast<UIView *>(platformData.value(kImePlatformDataInputAccessoryView).value<void *>()))
-        self.inputAccessoryView = [[[WrapperView alloc] initWithView:accessoryView] autorelease];
-
-#ifndef Q_OS_TVOS
-    if (platformData.value(kImePlatformDataHideShortcutsBar).toBool()) {
-        // According to the docs, leadingBarButtonGroups/trailingBarButtonGroups should be set to nil to hide the shortcuts bar.
-        // However, starting with iOS 10, the API has been surrounded with NS_ASSUME_NONNULL, which contradicts this and causes
-        // compiler warnings. Still it is the way to go to really hide the space reserved for that.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonnull"
-        self.inputAssistantItem.leadingBarButtonGroups = nil;
-        self.inputAssistantItem.trailingBarButtonGroups = nil;
-#pragma clang diagnostic pop
-    }
-#endif
-
-    self.undoManager.groupsByEvent = NO;
-    [self rebuildUndoStack];
+    m_configuredImeState = static_cast<QInputMethodQueryEvent*>(m_inputContext->imeState().currentState.clone());
+    m_inSendEventToFocusObject = NO;
 
     return self;
 }
 
 - (void)dealloc
 {
-    self.inputView = 0;
-    self.inputAccessoryView = 0;
     delete m_configuredImeState;
-
     [super dealloc];
 }
 
-- (BOOL)needsKeyboardReconfigure:(Qt::InputMethodQueries)updatedProperties
+- (QVariant)currentImeState:(Qt::InputMethodQuery)query
 {
-    if ((updatedProperties & Qt::ImEnabled)) {
-        Q_ASSERT([self currentImeState:Qt::ImEnabled].toBool());
-
-        // When switching on input-methods we need to consider hints and platform data
-        // as well, as the IM state that we were based on may have been invalidated when
-        // IM was switched off.
-
-        qImDebug("IM was turned on, we need to check hints and platform data as well");
-        updatedProperties |= (Qt::ImHints | Qt::ImPlatformData);
-    }
-
-    // Based on what we set up in initWithInputContext above
-    updatedProperties &= (Qt::ImHints | Qt::ImEnterKeyType | Qt::ImPlatformData);
-
-    if (!updatedProperties)
-        return NO;
-
-    for (uint i = 0; i < (sizeof(Qt::ImQueryAll) * CHAR_BIT); ++i) {
-        if (Qt::InputMethodQuery property = Qt::InputMethodQuery(int(updatedProperties & (1 << i)))) {
-            if ([self currentImeState:property] != m_configuredImeState->value(property)) {
-                qImDebug() << property << "has changed since text responder was configured, need reconfigure";
-                return YES;
-            }
-        }
-    }
-
-    return NO;
+    return m_inputContext->imeState().currentState.value(query);
 }
 
 - (BOOL)canBecomeFirstResponder
@@ -367,7 +256,6 @@
     return YES;
 }
 
-
 - (UIResponder*)nextResponder
 {
     return qApp->focusWindow() ?
@@ -376,6 +264,40 @@
 
 // -------------------------------------------------------------------------
 
+- (void)notifyInputDelegate:(Qt::InputMethodQueries)updatedProperties
+{
+    Q_UNUSED(updatedProperties);
+}
+
+- (BOOL)needsKeyboardReconfigure:(Qt::InputMethodQueries)updatedProperties
+{
+    if (updatedProperties & Qt::ImEnabled) {
+        qImDebug() << "Qt::ImEnabled has changed since text responder was configured, need reconfigure";
+        return YES;
+    }
+
+    if (updatedProperties & Qt::ImReadOnly) {
+        qImDebug() << "Qt::ImReadOnly has changed since text responder was configured, need reconfigure";
+        return YES;
+    }
+
+    return NO;
+}
+
+- (void)reset
+{
+    // Nothing to reset for read-only text fields
+}
+
+- (void)commit
+{
+    // Nothing to commit for read-only text fields
+}
+
+// -------------------------------------------------------------------------
+
+#ifndef QT_NO_SHORTCUT
+
 - (void)sendKeyPressRelease:(Qt::Key)key modifiers:(Qt::KeyboardModifiers)modifiers
 {
     QScopedValueRollback<BOOL> rollback(m_inSendEventToFocusObject, true);
@@ -383,15 +305,194 @@
     QWindowSystemInterface::handleKeyEvent(qApp->focusWindow(), QEvent::KeyRelease, key, modifiers);
 }
 
-#ifndef QT_NO_SHORTCUT
-
 - (void)sendShortcut:(QKeySequence::StandardKey)standardKey
 {
-    const int keys = QKeySequence(standardKey)[0];
-    Qt::Key key = Qt::Key(keys & 0x0000FFFF);
-    Qt::KeyboardModifiers modifiers = Qt::KeyboardModifiers(keys & 0xFFFF0000);
-    [self sendKeyPressRelease:key modifiers:modifiers];
+    const QKeyCombination combination = QKeySequence(standardKey)[0];
+    [self sendKeyPressRelease:combination.key() modifiers:combination.keyboardModifiers()];
 }
+
+- (BOOL)hasSelection
+{
+    QInputMethodQueryEvent query(Qt::ImAnchorPosition | Qt::ImCursorPosition);
+    QGuiApplication::sendEvent(QGuiApplication::focusObject(), &query);
+    int anchorPos = query.value(Qt::ImAnchorPosition).toInt();
+    int cursorPos = query.value(Qt::ImCursorPosition).toInt();
+    return anchorPos != cursorPos;
+}
+
+- (BOOL)canPerformAction:(SEL)action withSender:(id)sender
+{
+    const bool isSelectAction =
+            action == @selector(select:) ||
+            action == @selector(selectAll:);
+
+    const bool isReadAction = action == @selector(copy:);
+
+    if (!isSelectAction && !isReadAction)
+        return [super canPerformAction:action withSender:sender];
+
+    const bool hasSelection = [self hasSelection];
+    return (!hasSelection && isSelectAction) || (hasSelection && isReadAction);
+}
+
+- (void)copy:(id)sender
+{
+    Q_UNUSED(sender);
+    [self sendShortcut:QKeySequence::Copy];
+}
+
+- (void)select:(id)sender
+{
+    Q_UNUSED(sender);
+    [self sendShortcut:QKeySequence::MoveToPreviousWord];
+    [self sendShortcut:QKeySequence::SelectNextWord];
+}
+
+- (void)selectAll:(id)sender
+{
+    Q_UNUSED(sender);
+    [self sendShortcut:QKeySequence::SelectAll];
+}
+
+#endif // QT_NO_SHORTCUT
+
+@end
+
+// -------------------------------------------------------------------------
+
+@implementation QIOSTextInputResponder {
+    QString m_markedText;
+    BOOL m_inSelectionChange;
+}
+
+- (instancetype)initWithInputContext:(QT_PREPEND_NAMESPACE(QIOSInputContext) *)inputContext
+{
+    if (!(self = [super initWithInputContext:inputContext]))
+        return self;
+
+    m_inSelectionChange = NO;
+
+    QVariantMap platformData = m_configuredImeState->value(Qt::ImPlatformData).toMap();
+    Qt::InputMethodHints hints = Qt::InputMethodHints(m_configuredImeState->value(Qt::ImHints).toUInt());
+    Qt::EnterKeyType enterKeyType = Qt::EnterKeyType(m_configuredImeState->value(Qt::ImEnterKeyType).toUInt());
+
+    switch (enterKeyType) {
+    case Qt::EnterKeyReturn:
+        self.returnKeyType = UIReturnKeyDefault;
+        break;
+    case Qt::EnterKeyDone:
+        self.returnKeyType = UIReturnKeyDone;
+        break;
+    case Qt::EnterKeyGo:
+        self.returnKeyType = UIReturnKeyGo;
+        break;
+    case Qt::EnterKeySend:
+        self.returnKeyType = UIReturnKeySend;
+        break;
+    case Qt::EnterKeySearch:
+        self.returnKeyType = UIReturnKeySearch;
+        break;
+    case Qt::EnterKeyNext:
+        self.returnKeyType = UIReturnKeyNext;
+        break;
+    default:
+        self.returnKeyType = (hints & Qt::ImhMultiLine) ? UIReturnKeyDefault : UIReturnKeyDone;
+        break;
+    }
+
+    self.secureTextEntry = BOOL(hints & Qt::ImhHiddenText);
+    self.autocorrectionType = (hints & Qt::ImhNoPredictiveText) ?
+                UITextAutocorrectionTypeNo : UITextAutocorrectionTypeDefault;
+    self.spellCheckingType = (hints & Qt::ImhNoPredictiveText) ?
+                UITextSpellCheckingTypeNo : UITextSpellCheckingTypeDefault;
+
+    if (hints & Qt::ImhUppercaseOnly)
+        self.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
+    else if (hints & Qt::ImhNoAutoUppercase)
+        self.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    else
+        self.autocapitalizationType = UITextAutocapitalizationTypeSentences;
+
+    if (hints & Qt::ImhUrlCharactersOnly)
+        self.keyboardType = UIKeyboardTypeURL;
+    else if (hints & Qt::ImhEmailCharactersOnly)
+        self.keyboardType = UIKeyboardTypeEmailAddress;
+    else if (hints & Qt::ImhDigitsOnly)
+        self.keyboardType = UIKeyboardTypeNumberPad;
+    else if (hints & Qt::ImhDialableCharactersOnly)
+        self.keyboardType = UIKeyboardTypePhonePad;
+    else if (hints & Qt::ImhLatinOnly)
+        self.keyboardType = UIKeyboardTypeASCIICapable;
+    else if (hints & (Qt::ImhPreferNumbers | Qt::ImhFormattedNumbersOnly))
+        self.keyboardType = UIKeyboardTypeNumbersAndPunctuation;
+    else
+        self.keyboardType = UIKeyboardTypeDefault;
+
+    if (UIView *inputView = static_cast<UIView *>(platformData.value(kImePlatformDataInputView).value<void *>()))
+        self.inputView = [[[WrapperView alloc] initWithView:inputView] autorelease];
+    if (UIView *accessoryView = static_cast<UIView *>(platformData.value(kImePlatformDataInputAccessoryView).value<void *>()))
+        self.inputAccessoryView = [[[WrapperView alloc] initWithView:accessoryView] autorelease];
+
+#ifndef Q_OS_TVOS
+    if (platformData.value(kImePlatformDataHideShortcutsBar).toBool()) {
+        // According to the docs, leadingBarButtonGroups/trailingBarButtonGroups should be set to nil to hide the shortcuts bar.
+        // However, starting with iOS 10, the API has been surrounded with NS_ASSUME_NONNULL, which contradicts this and causes
+        // compiler warnings. Still it is the way to go to really hide the space reserved for that.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnonnull"
+        self.inputAssistantItem.leadingBarButtonGroups = nil;
+        self.inputAssistantItem.trailingBarButtonGroups = nil;
+#pragma clang diagnostic pop
+    }
+#endif
+
+    self.undoManager.groupsByEvent = NO;
+    [self rebuildUndoStack];
+
+    return self;
+}
+
+- (void)dealloc
+{
+    self.inputView = 0;
+    self.inputAccessoryView = 0;
+
+    [super dealloc];
+}
+
+- (BOOL)needsKeyboardReconfigure:(Qt::InputMethodQueries)updatedProperties
+{
+    Qt::InputMethodQueries relevantProperties = updatedProperties;
+    if ((relevantProperties & Qt::ImEnabled)) {
+        // When switching on input-methods we need to consider hints and platform data
+        // as well, as the IM state that we were based on may have been invalidated when
+        // IM was switched off.
+
+        qImDebug("IM was turned on, we need to check hints and platform data as well");
+        relevantProperties |= (Qt::ImHints | Qt::ImPlatformData);
+    }
+
+    // Based on what we set up in initWithInputContext above
+    relevantProperties &= (Qt::ImHints | Qt::ImEnterKeyType | Qt::ImPlatformData);
+
+    if (!relevantProperties)
+        return [super needsKeyboardReconfigure:updatedProperties];
+
+    for (uint i = 0; i < (sizeof(Qt::ImQueryAll) * CHAR_BIT); ++i) {
+        if (Qt::InputMethodQuery property = Qt::InputMethodQuery(int(updatedProperties & (1 << i)))) {
+            if ([self currentImeState:property] != m_configuredImeState->value(property)) {
+                qImDebug() << property << "has changed since text responder was configured, need reconfigure";
+                return YES;
+            }
+        }
+    }
+
+    return [super needsKeyboardReconfigure:updatedProperties];
+}
+
+// -------------------------------------------------------------------------
+
+#ifndef QT_NO_SHORTCUT
 
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender
 {
@@ -412,7 +513,7 @@
         || action == @selector(redo));
 
     const bool unknownAction = !isEditAction && !isSelectAction;
-    const bool hasSelection = ![self selectedTextRange].empty;
+    const bool hasSelection = [self hasSelection];
 
     if (unknownAction)
         return [super canPerformAction:action withSender:sender];
@@ -436,29 +537,10 @@
     [self sendShortcut:QKeySequence::Cut];
 }
 
-- (void)copy:(id)sender
-{
-    Q_UNUSED(sender);
-    [self sendShortcut:QKeySequence::Copy];
-}
-
 - (void)paste:(id)sender
 {
     Q_UNUSED(sender);
     [self sendShortcut:QKeySequence::Paste];
-}
-
-- (void)select:(id)sender
-{
-    Q_UNUSED(sender);
-    [self sendShortcut:QKeySequence::MoveToPreviousWord];
-    [self sendShortcut:QKeySequence::SelectNextWord];
-}
-
-- (void)selectAll:(id)sender
-{
-    Q_UNUSED(sender);
-    [self sendShortcut:QKeySequence::SelectAll];
 }
 
 - (void)delete:(id)sender
@@ -516,14 +598,22 @@
         // from within a undo callback.
         NSUndoManager *undoMgr = self.undoManager;
         [undoMgr removeAllActions];
+
+        [undoMgr beginUndoGrouping];
+        [undoMgr registerUndoWithTarget:self selector:@selector(undo) object:nil];
+        [undoMgr endUndoGrouping];
         [undoMgr beginUndoGrouping];
         [undoMgr registerUndoWithTarget:self selector:@selector(undo) object:nil];
         [undoMgr endUndoGrouping];
 
-        // Schedule an operation that we immediately pop off to be able to schedule a redo
+        // Schedule operations that we immediately pop off to be able to schedule redos
         [undoMgr beginUndoGrouping];
         [undoMgr registerUndoWithTarget:self selector:@selector(registerRedo) object:nil];
         [undoMgr endUndoGrouping];
+        [undoMgr beginUndoGrouping];
+        [undoMgr registerUndoWithTarget:self selector:@selector(registerRedo) object:nil];
+        [undoMgr endUndoGrouping];
+        [undoMgr undo];
         [undoMgr undo];
 
         // Note that, perhaps because of a bug in UIKit, the buttons on the shortcuts bar ends up
@@ -532,6 +622,11 @@
         // become disabled when there is nothing more to undo (Qt didn't change anything upon receiving
         // an undo request). This seems to be OK behavior, so we let it stay like that unless it shows
         // to cause problems.
+
+        // QTBUG-63393: Having two operations on the rebuilt undo stack keeps the undo/redo widgets
+        // always enabled on the shortcut bar. This workaround was found by experimenting with
+        // removing the removeAllActions call, and is related to the unknown internal implementation
+        // details of how the shortcut bar updates the dimming of its buttons.
     });
 }
 
@@ -634,11 +729,6 @@
     QScopedValueRollback<BOOL> rollback(m_inSendEventToFocusObject);
     m_inSendEventToFocusObject = YES;
     QCoreApplication::sendEvent(focusObject, &e);
-}
-
-- (QVariant)currentImeState:(Qt::InputMethodQuery)query
-{
-    return m_inputContext->imeState().currentState.value(query);
 }
 
 - (id<UITextInputTokenizer>)tokenizer
@@ -828,20 +918,24 @@
     NSRange r = static_cast<QUITextRange*>(range).range;
     QList<QInputMethodEvent::Attribute> attrs;
     attrs << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, r.location, 0, 0);
-    QInputMethodEvent e(m_markedText, attrs);
-    [self sendEventToFocusObject:e];
-    QRectF startRect = qApp->inputMethod()->cursorRectangle();
+    {
+        QInputMethodEvent e(m_markedText, attrs);
+        [self sendEventToFocusObject:e];
+    }
+    QRectF startRect = QPlatformInputContext::cursorRectangle();;
 
     attrs = QList<QInputMethodEvent::Attribute>();
     attrs << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, r.location + r.length, 0, 0);
-    e = QInputMethodEvent(m_markedText, attrs);
-    [self sendEventToFocusObject:e];
-    QRectF endRect = qApp->inputMethod()->cursorRectangle();
+    {
+        QInputMethodEvent e(m_markedText, attrs);
+        [self sendEventToFocusObject:e];
+    }
+    QRectF endRect = QPlatformInputContext::cursorRectangle();;
 
     if (cursorPos != int(r.location + r.length) || cursorPos != anchorPos) {
         attrs = QList<QInputMethodEvent::Attribute>();
         attrs << QInputMethodEvent::Attribute(QInputMethodEvent::Selection, qMin(cursorPos, anchorPos), qAbs(cursorPos - anchorPos), 0);
-        e = QInputMethodEvent(m_markedText, attrs);
+        QInputMethodEvent e(m_markedText, attrs);
         [self sendEventToFocusObject:e];
     }
 
@@ -862,8 +956,7 @@
     Q_UNUSED(position);
     // Assume for now that position is always the same as
     // cursor index until a better API is in place:
-    QRectF cursorRect = qApp->inputMethod()->cursorRectangle();
-    return cursorRect.toCGRect();
+    return QPlatformInputContext::cursorRectangle().toCGRect();
 }
 
 - (void)replaceRange:(UITextRange *)range withText:(NSString *)text
@@ -902,9 +995,7 @@
 
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point
 {
-    QPointF p = QPointF::fromCGPoint(point);
-    const QTransform mapToLocal = QGuiApplication::inputMethod()->inputItemTransform().inverted();
-    int textPos = QInputMethod::queryFocusObject(Qt::ImCursorPosition, p * mapToLocal).toInt();
+    int textPos = QPlatformInputContext::queryFocusObject(Qt::ImCursorPosition, QPointF::fromCGPoint(point)).toInt();
     return [QUITextPosition positionWithIndex:textPos];
 }
 

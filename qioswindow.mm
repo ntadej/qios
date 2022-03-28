@@ -46,6 +46,7 @@
 #include "qiosscreen.h"
 #include "qiosviewcontroller.h"
 #include "quiview.h"
+#include "qiosinputcontext.h"
 
 #include <QtGui/private/qwindow_p.h>
 #include <qpa/qplatformintegration.h>
@@ -243,16 +244,6 @@ bool QIOSWindow::isExposed() const
 {
     return qApp->applicationState() != Qt::ApplicationSuspended
         && window()->isVisible() && !window()->geometry().isEmpty();
-}
-
-void QIOSWindow::setWindowFlags(Qt::WindowFlags flags)
-{
-    // Update the QWindow representation straight away, so that
-    // we can update the statusbar visibility based on the new
-    // flags.
-    qt_window_private(window())->windowFlags = flags;
-
-    [m_view.qtViewController updateProperties];
 }
 
 void QIOSWindow::setWindowState(Qt::WindowStates state)

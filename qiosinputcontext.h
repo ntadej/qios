@@ -1,6 +1,6 @@
 /****************************************************************************
 **
-** Copyright (C) 2016 The Qt Company Ltd.
+** Copyright (C) 2020 The Qt Company Ltd.
 ** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the plugins of the Qt Toolkit.
@@ -54,7 +54,7 @@ const char kImePlatformDataReturnKeyType[] = "returnKeyType";
 
 @class QIOSLocaleListener;
 @class QIOSKeyboardListener;
-@class QIOSTextInputResponder;
+@class QIOSTextResponder;
 @protocol KeyboardState;
 
 QT_BEGIN_NAMESPACE
@@ -76,10 +76,10 @@ struct KeyboardState
 
 struct ImeState
 {
-    ImeState() : currentState(0), focusObject(0) {}
+    ImeState() = default;
     Qt::InputMethodQueries update(Qt::InputMethodQueries properties);
-    QInputMethodQueryEvent currentState;
-    QObject *focusObject;
+    QInputMethodQueryEvent currentState = QInputMethodQueryEvent({});
+    QObject *focusObject = nullptr;
 };
 
 class QIOSInputContext : public QPlatformInputContext
@@ -111,10 +111,10 @@ public:
     void scrollToCursor();
     void scroll(int y);
 
-    void updateKeyboardState(NSNotification *notification = 0);
+    void updateKeyboardState(NSNotification *notification = nullptr);
 
-    const ImeState &imeState() { return m_imeState; };
-    const KeyboardState &keyboardState() { return m_keyboardState; };
+    const ImeState &imeState() { return m_imeState; }
+    const KeyboardState &keyboardState() { return m_keyboardState; }
 
     bool inputMethodAccepted() const;
 
@@ -125,7 +125,7 @@ private:
 
     QIOSLocaleListener *m_localeListener;
     QIOSKeyboardListener *m_keyboardHideGesture;
-    QIOSTextInputResponder *m_textResponder;
+    QIOSTextResponder *m_textResponder;
     KeyboardState m_keyboardState;
     ImeState m_imeState;
 };
