@@ -1,4 +1,16 @@
-# Generated from ios.pro.
+cmake_minimum_required(VERSION 3.16)
+
+project(qios
+    VERSION "6.3.0.0"
+    LANGUAGES CXX C
+)
+
+# Make sure we use the fixed BASE argument of qt_add_resource.
+set(QT_USE_FIXED_QT_ADD_RESOURCE_BASE TRUE)
+
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core Gui OpenGL) # special case
+
+qt_prepare_standalone_project()
 
 #####################################################################
 ## QIOSIntegrationPlugin Plugin:
