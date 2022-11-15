@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  QT_VERSION: 6.3.2
+  QT_VERSION: 6.4.1
 
 jobs:
   build:
@@ -46,14 +46,14 @@ jobs:
       - name: Download Qt (desktop)
         uses: jurplel/install-qt-action@v3
         with:
-          aqtversion: ==2.1.*
+          aqtversion: ==3.0.*
           version: ${{ env.QT_VERSION }}
           target: desktop
 
       - name: Download Qt (iOS)
         uses: jurplel/install-qt-action@v3
         with:
-          aqtversion: ==2.1.*
+          aqtversion: ==3.0.*
           version: ${{ env.QT_VERSION }}
           target: ios
 

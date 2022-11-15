@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(qios
-    VERSION "6.3.2.0"
+    VERSION "6.4.1.0"
     LANGUAGES CXX C
 )
 
@@ -24,7 +24,6 @@ qt_internal_add_plugin(QIOSIntegrationPlugin
         plugin.mm
         qiosapplicationdelegate.h qiosapplicationdelegate.mm
         qiosapplicationstate.h qiosapplicationstate.mm
-        qiosbackingstore.h qiosbackingstore.mm
         qioscontext.h qioscontext.mm
         qioseventdispatcher.h qioseventdispatcher.mm
         qiosglobal.h qiosglobal.mm
