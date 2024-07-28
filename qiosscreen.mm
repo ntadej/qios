@@ -1,6 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include "qiosglobal.h"
 #include "qiosintegration.h"
 #include "qiosscreen.h"
@@ -15,6 +17,7 @@
 
 #include <QtGui/qpointingdevice.h>
 #include <QtGui/private/qwindow_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include <private/qcoregraphics_p.h>
 #include <qpa/qwindowsysteminterface.h>
 
@@ -80,6 +83,9 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenDisconnected:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen disconnected that we didn't know about");
 
@@ -88,6 +94,9 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 
 + (void)screenModeChanged:(NSNotification*)notification
 {
+    if (!QIOSIntegration::instance())
+        return;
+
     QIOSScreen *screen = qtPlatformScreenFor([notification object]);
     Q_ASSERT_X(screen, Q_FUNC_INFO, "Screen changed that we didn't know about");
 
@@ -177,8 +186,19 @@ static QIOSScreen* qtPlatformScreenFor(UIScreen *uiScreen)
 {
     [super traitCollectionDidChange:previousTraitCollection];
 
+    if (!qGuiApp)
+        return;
+
+    Qt::ColorScheme colorScheme = self.traitCollection.userInterfaceStyle
+                              == UIUserInterfaceStyleDark
+                              ? Qt::ColorScheme::Dark
+                              : Qt::ColorScheme::Light;
+
     if (self.screen == UIScreen.mainScreen) {
-        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
+        // Check if the current userInterfaceStyle reports a different appearance than
+        // the platformTheme's appearance. We might have set that one based on the UIScreen
+        if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle
+            || QGuiApplicationPrivate::platformTheme()->colorScheme() != colorScheme) {
             QIOSTheme::initializeSystemPalette();
             QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
         }
@@ -303,7 +323,7 @@ void QIOSScreen::updateProperties()
     // and do not take split-view constraints into account, so we have to
     // combine the two to get the correct available geometry.
     QRect applicationFrame = QRectF::fromCGRect(m_uiScreen.qt_applicationFrame).toRect();
-    UIEdgeInsets safeAreaInsets = m_uiWindow.qt_safeAreaInsets;
+    UIEdgeInsets safeAreaInsets = m_uiWindow.safeAreaInsets;
     m_availableGeometry = m_geometry.adjusted(safeAreaInsets.left, safeAreaInsets.top,
         -safeAreaInsets.right, -safeAreaInsets.bottom).intersected(applicationFrame);
 

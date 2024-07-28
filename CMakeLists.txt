@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.19)
 
 project(qios
-    VERSION "6.4.3.0"
+    VERSION "6.7.2.0"
     LANGUAGES CXX C
 )
 
@@ -18,13 +18,13 @@ qt_prepare_standalone_project()
 
 qt_internal_add_plugin(QIOSIntegrationPlugin
     OUTPUT_NAME qios
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES ios # special case
+    STATIC # Force static, even in shared builds
+    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES ios
     PLUGIN_TYPE platforms
     SOURCES
         plugin.mm
         qiosapplicationdelegate.h qiosapplicationdelegate.mm
         qiosapplicationstate.h qiosapplicationstate.mm
-        qioscontext.h qioscontext.mm
         qioseventdispatcher.h qioseventdispatcher.mm
         qiosglobal.h qiosglobal.mm
         qiosinputcontext.h qiosinputcontext.mm
@@ -39,26 +39,31 @@ qt_internal_add_plugin(QIOSIntegrationPlugin
         quiaccessibilityelement.h quiaccessibilityelement.mm
         quiview.h quiview.mm
         uistrings_p.h uistrings.cpp
+    NO_PCH_SOURCES
+        qioscontext.mm # undef QT_NO_FOREACH
+        qiosintegration.mm # undef QT_NO_FOREACH
+        qiosplatformaccessibility.mm # undef QT_NO_FOREACH
+        qiosscreen.mm # undef QT_NO_FOREACH
     LIBRARIES
         ${FWAudioToolbox}
         ${FWFoundation}
         ${FWMetal}
         ${FWQuartzCore}
         ${FWUIKit}
+        ${FWCoreGraphics}
         Qt::CorePrivate
         Qt::GuiPrivate
 )
 
-# special case begin
 qt_disable_apple_app_extension_api_only(QIOSIntegrationPlugin)
-# special case end
-#### Keys ignored in scope 2:.:.:kernel.pro:<TRUE>:
-# OTHER_FILES = "quiview_textinput.mm" "quiview_accessibility.mm"
 
 ## Scopes:
 #####################################################################
+qt_internal_find_apple_system_framework(FWUniformTypeIdentifiers UniformTypeIdentifiers)
 
 qt_internal_extend_target(QIOSIntegrationPlugin CONDITION QT_FEATURE_opengl
+    SOURCES
+        qioscontext.h qioscontext.mm
     LIBRARIES
         Qt::OpenGLPrivate
 )
@@ -68,13 +73,15 @@ qt_internal_extend_target(QIOSIntegrationPlugin CONDITION NOT TVOS
         qiosclipboard.h qiosclipboard.mm
         qiosdocumentpickercontroller.h qiosdocumentpickercontroller.mm
         qiosfiledialog.h qiosfiledialog.mm
+        qioscolordialog.h qioscolordialog.mm
+        qiosfontdialog.h qiosfontdialog.mm
         qiosmenu.h qiosmenu.mm
         qiosmessagedialog.h qiosmessagedialog.mm
         qiostextinputoverlay.h qiostextinputoverlay.mm
     LIBRARIES
         ${FWAssetsLibrary}
+        ${FWUniformTypeIdentifiers}
+        ${FWPhotos}
 )
 
-#### Keys ignored in scope 6:.:.:kernel.pro:NOT TARGET___equals____ss_QT_DEFAULT_QPA_PLUGIN:
-# PLUGIN_EXTENDS = "-"
 add_subdirectory(optional)

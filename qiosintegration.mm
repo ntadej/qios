@@ -1,13 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+
 #include "qiosintegration.h"
 #include "qioseventdispatcher.h"
 #include "qiosglobal.h"
 #include "qioswindow.h"
 #include "qiosscreen.h"
 #include "qiosplatformaccessibility.h"
-#include "qioscontext.h"
 #ifndef Q_OS_TVOS
 #include "qiosclipboard.h"
 #endif
@@ -24,9 +25,14 @@
 #include <qpa/qplatformoffscreensurface.h>
 
 #include <QtGui/private/qcoretextfontdatabase_p.h>
-#include <QtGui/private/qmacmime_p.h>
+#include <QtGui/private/qmacmimeregistry_p.h>
+#include <QtGui/qutimimeconverter.h>
 #include <QDir>
 #include <QOperatingSystemVersion>
+
+#if QT_CONFIG(opengl)
+#include "qioscontext.h"
+#endif
 
 #import <AudioToolbox/AudioServices.h>
 
@@ -89,7 +95,7 @@ void QIOSIntegration::initialize()
 #if QT_CONFIG(tabletevent)
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
 #endif
-    QMacInternalPasteboardMime::initializeMimeTypes();
+    QMacMimeRegistry::initializeMimeTypes();
 
     qsizetype size = QList<QPluginParsedMetaData>(m_optionalPlugins->metaData()).size();
     for (qsizetype i = 0; i < size; ++i)
@@ -105,7 +111,8 @@ QIOSIntegration::~QIOSIntegration()
     delete m_clipboard;
     m_clipboard = 0;
 #endif
-    QMacInternalPasteboardMime::destroyMimeTypes();
+
+    QMacMimeRegistry::destroyMimeTypes();
 
     delete m_inputContext;
     m_inputContext = 0;
@@ -126,11 +133,15 @@ QIOSIntegration::~QIOSIntegration()
 bool QIOSIntegration::hasCapability(Capability cap) const
 {
     switch (cap) {
+#if QT_CONFIG(opengl)
     case BufferQueueingOpenGL:
         return true;
     case OpenGL:
     case ThreadedOpenGL:
         return true;
+    case RasterGLSurface:
+        return true;
+#endif
     case ThreadedPixmaps:
         return true;
     case MultipleWindows:
@@ -139,7 +150,7 @@ bool QIOSIntegration::hasCapability(Capability cap) const
         return false;
     case ApplicationState:
         return true;
-    case RasterGLSurface:
+    case ForeignWindows:
         return true;
     default:
         return QPlatformIntegration::hasCapability(cap);
@@ -151,16 +162,23 @@ QPlatformWindow *QIOSIntegration::createPlatformWindow(QWindow *window) const
     return new QIOSWindow(window);
 }
 
+QPlatformWindow *QIOSIntegration::createForeignWindow(QWindow *window, WId nativeHandle) const
+{
+    return new QIOSWindow(window, nativeHandle);
+}
+
 QPlatformBackingStore *QIOSIntegration::createPlatformBackingStore(QWindow *window) const
 {
     return new QRhiBackingStore(window);
 }
 
+#if QT_CONFIG(opengl)
 // Used when the QWindow's surface type is set by the client to QSurface::OpenGLSurface
 QPlatformOpenGLContext *QIOSIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
     return new QIOSContext(context);
 }
+#endif
 
 class QIOSOffscreenSurface : public QPlatformOffscreenSurface
 {
@@ -266,6 +284,11 @@ void QIOSIntegration::beep() const
 #if !TARGET_IPHONE_SIMULATOR
     AudioServicesPlayAlertSound(kSystemSoundID_Vibrate);
 #endif
+}
+
+void QIOSIntegration::setApplicationBadge(qint64 number)
+{
+    UIApplication.sharedApplication.applicationIconBadgeNumber = number;
 }
 
 // ---------------------------------------------------------

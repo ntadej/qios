@@ -21,7 +21,7 @@ public:
     const QPalette *palette(Palette type = SystemPalette) const override;
     QVariant themeHint(ThemeHint hint) const override;
 
-    Appearance appearance() const override;
+    Qt::ColorScheme colorScheme() const override;
 
     QPlatformMenuItem* createPlatformMenuItem() const override;
     QPlatformMenu* createPlatformMenu() const override;
@@ -30,6 +30,7 @@ public:
     QPlatformDialogHelper *createPlatformDialogHelper(DialogType type) const override;
 
     const QFont *font(Font type = SystemFont) const override;
+    QIconEngine *createIconEngine(const QString &iconName) const override;
 
     static const char *name;
 

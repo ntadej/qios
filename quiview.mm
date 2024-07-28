@@ -53,7 +53,6 @@ inline ulong getTimeStamp(UIEvent *event)
 @implementation QUIView {
     QHash<NSUInteger, QWindowSystemInterface::TouchPoint> m_activeTouches;
     UITouch *m_activePencilTouch;
-    int m_nextTouchId;
     NSMutableArray<UIAccessibilityElement *> *m_accessibleElements;
     UIPanGestureRecognizer *m_scrollGestureRecognizer;
     CGPoint m_lastScrollCursorPos;
@@ -82,7 +81,10 @@ inline ulong getTimeStamp(UIEvent *event)
 
 + (Class)layerClass
 {
+#if QT_CONFIG(opengl)
     return [CAEAGLLayer class];
+#endif
+    return [super layerClass];
 }
 
 - (instancetype)initWithQIOSWindow:(QT_PREPEND_NAMESPACE(QIOSWindow) *)window
@@ -98,15 +100,24 @@ inline ulong getTimeStamp(UIEvent *event)
         // handled by the UIView. Scroll gestures, even those coming from touch devices,
         // such as trackpads will still be received as they are not touch events
         m_scrollGestureRecognizer.allowedTouchTypes = [NSArray array];
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_13_4)
         if (@available(ios 13.4, *)) {
             m_scrollGestureRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
         }
-#endif
         m_scrollGestureRecognizer.maximumNumberOfTouches = 0;
         m_lastScrollDelta = CGPointZero;
         m_lastScrollCursorPos = CGPointZero;
         [self addGestureRecognizer:m_scrollGestureRecognizer];
+
+        if ([self.layer isKindOfClass:CAMetalLayer.class]) {
+            QWindow *window = self.platformWindow->window();
+            if (QColorSpace colorSpace = window->format().colorSpace(); colorSpace.isValid()) {
+                QCFType<CFDataRef> iccData = colorSpace.iccProfile().toCFData();
+                QCFType<CGColorSpaceRef> cgColorSpace = CGColorSpaceCreateWithICCData(iccData);
+                CAMetalLayer *metalLayer = static_cast<CAMetalLayer *>(self.layer);
+                metalLayer.colorspace = cgColorSpace;
+                qCDebug(lcQpaWindow) << "Set" << self << "color space to" << metalLayer.colorspace;
+            }
+        }
     }
 
     return self;
@@ -115,6 +126,7 @@ inline ulong getTimeStamp(UIEvent *event)
 - (instancetype)initWithFrame:(CGRect)frame
 {
     if ((self = [super initWithFrame:frame])) {
+#if QT_CONFIG(opengl)
         if ([self.layer isKindOfClass:[CAEAGLLayer class]]) {
             // Set up EAGL layer
             CAEAGLLayer *eaglLayer = static_cast<CAEAGLLayer *>(self.layer);
@@ -124,6 +136,7 @@ inline ulong getTimeStamp(UIEvent *event)
                 kEAGLDrawablePropertyColorFormat: kEAGLColorFormatRGBA8
             };
         }
+#endif
 
         if (isQtApplication())
             self.hidden = YES;
@@ -250,6 +263,9 @@ inline ulong getTimeStamp(UIEvent *event)
     Q_UNUSED(layer);
     Q_ASSERT(layer == self.layer);
 
+    if (!self.platformWindow)
+        return;
+
     [self sendUpdatedExposeEvent];
 }
 
@@ -291,7 +307,7 @@ inline ulong getTimeStamp(UIEvent *event)
         // blocked by this guard.
         FirstResponderCandidate firstResponderCandidate(self);
 
-        qImDebug() << "self:" << self << "first:" << [UIResponder currentFirstResponder];
+        qImDebug() << "self:" << self << "first:" << [UIResponder qt_currentFirstResponder];
 
         if (![super becomeFirstResponder]) {
             qImDebug() << self << "was not allowed to become first responder";
@@ -302,7 +318,7 @@ inline ulong getTimeStamp(UIEvent *event)
     }
 
     if (qGuiApp->focusWindow() != self.platformWindow->window())
-        QWindowSystemInterface::handleWindowActivated(self.platformWindow->window(), Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(self.platformWindow->window(), Qt::ActiveWindowFocusReason);
     else
         qImDebug() << self.platformWindow->window() << "already active, not sending window activation";
 
@@ -330,7 +346,7 @@ inline ulong getTimeStamp(UIEvent *event)
 
 - (BOOL)resignFirstResponder
 {
-    qImDebug() << "self:" << self << "first:" << [UIResponder currentFirstResponder];
+    qImDebug() << "self:" << self << "first:" << [UIResponder qt_currentFirstResponder];
 
     if (![super resignFirstResponder])
         return NO;
@@ -339,7 +355,7 @@ inline ulong getTimeStamp(UIEvent *event)
 
     UIResponder *newResponder = FirstResponderCandidate::currentCandidate();
     if ([self responderShouldTriggerWindowDeactivation:newResponder])
-        QWindowSystemInterface::handleWindowActivated(nullptr, Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(nullptr, Qt::ActiveWindowFocusReason);
 
     return YES;
 }
@@ -353,7 +369,7 @@ inline ulong getTimeStamp(UIEvent *event)
     if ([self isFirstResponder])
         return YES;
 
-    UIResponder *firstResponder = [UIResponder currentFirstResponder];
+    UIResponder *firstResponder = [UIResponder qt_currentFirstResponder];
     if ([firstResponder isKindOfClass:[QIOSTextInputResponder class]]
         && [firstResponder nextResponder] == self)
         return YES;
@@ -504,7 +520,10 @@ inline ulong getTimeStamp(UIEvent *event)
         {
             Q_ASSERT(!m_activeTouches.contains(touch.hash));
 #endif
-            m_activeTouches[touch.hash].id = m_nextTouchId++;
+            // Use window-independent touch identifiers, so that
+            // multi-touch works across windows.
+            static quint16 nextTouchId = 0;
+            m_activeTouches[touch.hash].id = nextTouchId++;
 #if QT_CONFIG(tabletevent)
         }
 #endif
@@ -546,9 +565,6 @@ inline ulong getTimeStamp(UIEvent *event)
     // tvOS only supports single touch
     m_activeTouches.clear();
 #endif
-
-    if (m_activeTouches.isEmpty() && !m_activePencilTouch)
-        m_nextTouchId = 0;
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
@@ -581,7 +597,6 @@ inline ulong getTimeStamp(UIEvent *event)
         qWarning("Subset of active touches cancelled by UIKit");
 
     m_activeTouches.clear();
-    m_nextTouchId = 0;
     m_activePencilTouch = nil;
 
     ulong timestamp = event ? getTimeStamp(event) : ([[NSProcessInfo processInfo] systemUptime] * 1000);
@@ -756,10 +771,8 @@ inline ulong getTimeStamp(UIEvent *event)
     ulong qt_timestamp = time_stamp * 1000;
 
     Qt::KeyboardModifiers qt_modifierFlags = Qt::NoModifier;
-#if QT_IOS_PLATFORM_SDK_EQUAL_OR_ABOVE(__IPHONE_13_4)
     if (@available(ios 13.4, *))
         qt_modifierFlags = QAppleKeyMapper::fromUIKitModifiers(recognizer.modifierFlags);
-#endif
 
     if (recognizer.state == UIGestureRecognizerStateBegan)
         // locationInView: doesn't return the cursor position at the time of the wheel event,
@@ -814,11 +827,6 @@ inline ulong getTimeStamp(UIEvent *event)
         return static_cast<QIOSViewController *>(vc);
 
     return nil;
-}
-
-- (UIEdgeInsets)qt_safeAreaInsets
-{
-    return self.safeAreaInsets;
 }
 
 @end

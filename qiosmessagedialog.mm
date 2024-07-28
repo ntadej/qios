@@ -30,7 +30,7 @@ inline QString QIOSMessageDialog::messageTextPlain()
 {
     // Concatenate text fragments, and remove HTML tags
     const QSharedPointer<QMessageDialogOptions> &opt = options();
-    const QString &lineShift = QStringLiteral("\n\n");
+    constexpr auto lineShift = "\n\n"_L1;
     const QString &informativeText = opt->informativeText();
     const QString &detailedText = opt->detailedText();
 
@@ -40,7 +40,7 @@ inline QString QIOSMessageDialog::messageTextPlain()
     if (!detailedText.isEmpty())
         text += lineShift + detailedText;
 
-    text.replace("<p>"_L1, QStringLiteral("\n"), Qt::CaseInsensitive);
+    text.replace("<p>"_L1, "\n"_L1, Qt::CaseInsensitive);
     text.remove(QRegularExpression(QStringLiteral("<[^>]*>")));
 
     return text;
@@ -91,6 +91,9 @@ bool QIOSMessageDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality win
             || !options() // Some message dialogs don't have options (QErrorMessage)
             || windowModality == Qt::NonModal) // We can only do modal dialogs
         return false;
+
+    if (!options()->checkBoxLabel().isNull())
+        return false; // Can't support
 
     m_alertController = [[UIAlertController
         alertControllerWithTitle:options()->windowTitle().toNSString()

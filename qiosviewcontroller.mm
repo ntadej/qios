@@ -21,6 +21,8 @@
 #include "qioswindow.h"
 #include "quiview.h"
 
+#include <QtCore/qpointer.h>
+
 // -------------------------------------------------------------------------
 
 @interface QIOSViewController ()
@@ -107,8 +109,11 @@
 {
     Q_UNUSED(subview);
 
-    Q_ASSERT(self.window);
     UIWindow *uiWindow = self.window;
+    // uiWindow can be null when closing from the ios "app manager" and the app is
+    // showing a native window like UIDocumentBrowserViewController
+    if (!uiWindow)
+        return;
 
     if (uiWindow.screen != [UIScreen mainScreen] && self.subviews.count == 1) {
         // We're about to remove the last view of an external screen, so go back
