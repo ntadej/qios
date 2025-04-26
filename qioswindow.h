@@ -29,7 +29,6 @@ public:
     void setWindowFlags(Qt::WindowFlags flags) override;
     void setWindowState(Qt::WindowStates state) override;
     void setParent(const QPlatformWindow *window) override;
-    void handleContentOrientationChange(Qt::ScreenOrientation orientation) override;
     void setVisible(bool visible) override;
     void setOpacity(qreal level) override;
 
