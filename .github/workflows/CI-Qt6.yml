@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  QT_VERSION: 6.9.0
+  QT_VERSION: 6.9.1
 
 jobs:
   build:
