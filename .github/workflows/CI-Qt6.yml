@@ -24,16 +24,16 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  QT_VERSION: 6.9.1
+  QT_VERSION: 6.10.0
 
 jobs:
   build:
     name: Build qios
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: source
           fetch-depth: 0
@@ -56,7 +56,7 @@ jobs:
           rm $QT_ROOT_DIR/lib/cmake/Qt6Gui/Qt6QIosOptionalPlugin_NSPhotoLibraryPlugin*
 
       - name: Setup ninja
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
 
       - name: Build qios
         run: |
@@ -86,14 +86,14 @@ jobs:
   release:
     name: Release qios
     if: github.ref_type == 'tag'
-    runs-on: macos-14
+    runs-on: macos-15
     needs: build
     permissions:
       contents: write
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: qios
 

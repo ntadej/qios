@@ -4,14 +4,14 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qios
-    VERSION "6.9.1.0"
+    VERSION "6.10.0.0"
     LANGUAGES CXX C
 )
 
 # Make sure we use the fixed BASE argument of qt_add_resource.
 set(QT_USE_FIXED_QT_ADD_RESOURCE_BASE TRUE)
 
-find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core Gui OpenGL) # special case
+find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals CorePrivate GuiPrivate OpenGLPrivate) # special case
 
 qt_prepare_standalone_project()
 
