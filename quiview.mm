@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quiview.h"
 
@@ -23,6 +24,7 @@
 #include <QtGui/private/qpointingdevice_p.h>
 #include <qpa/qwindowsysteminterface_p.h>
 
+Q_LOGGING_CATEGORY(lcQpaMouse, "qt.qpa.input.mouse")
 Q_LOGGING_CATEGORY(lcQpaTablet, "qt.qpa.input.tablet")
 Q_LOGGING_CATEGORY(lcQpaInputEvents, "qt.qpa.input.events")
 
@@ -56,12 +58,8 @@ inline ulong getTimeStamp(UIEvent *event)
     QHash<NSUInteger, QWindowSystemInterface::TouchPoint> m_activeTouches;
     UITouch *m_activePencilTouch;
     NSMutableArray<UIAccessibilityElement *> *m_accessibleElements;
-    UIPanGestureRecognizer *m_scrollGestureRecognizer;
     CGPoint m_lastScrollCursorPos;
     CGPoint m_lastScrollDelta;
-#if QT_CONFIG(tabletevent)
-    UIHoverGestureRecognizer *m_hoverGestureRecognizer;
-#endif
 }
 
 + (Class)layerClass
@@ -86,27 +84,30 @@ inline ulong getTimeStamp(UIEvent *event)
         self.multipleTouchEnabled = YES;
 #endif
 
-        m_scrollGestureRecognizer = [[UIPanGestureRecognizer alloc]
-                                      initWithTarget:self
-                                      action:@selector(handleScroll:)];
+        auto scrollGestureRecognizer = [[UIPanGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handleScroll:)];
         // The gesture recognizer should only care about scroll gestures (for now)
         // Set allowedTouchTypes to empty array here to not interfere with touch events
         // handled by the UIView. Scroll gestures, even those coming from touch devices,
         // such as trackpads will still be received as they are not touch events
-        m_scrollGestureRecognizer.allowedTouchTypes = [NSArray array];
-        if (@available(ios 13.4, *)) {
-            m_scrollGestureRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
-        }
-        m_scrollGestureRecognizer.maximumNumberOfTouches = 0;
+        scrollGestureRecognizer.allowedTouchTypes = @[];
+        if (@available(ios 13.4, *))
+            scrollGestureRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
+        scrollGestureRecognizer.maximumNumberOfTouches = 0;
         m_lastScrollDelta = CGPointZero;
         m_lastScrollCursorPos = CGPointZero;
-        [self addGestureRecognizer:m_scrollGestureRecognizer];
+        [self addGestureRecognizer:[scrollGestureRecognizer autorelease]];
+
+        auto mouseHoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handleMouseHover:)];
+        mouseHoverGestureRecognizer.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
+        [self addGestureRecognizer:[mouseHoverGestureRecognizer autorelease]];
 
 #if QT_CONFIG(tabletevent)
-        m_hoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
-                                     initWithTarget:self
-                                     action:@selector(handleHover:)];
-        [self addGestureRecognizer:m_hoverGestureRecognizer];
+        auto pencilHoverGestureRecognizer = [[UIHoverGestureRecognizer alloc]
+            initWithTarget:self action:@selector(handlePencilHover:)];
+        pencilHoverGestureRecognizer.allowedTouchTypes = @[ @(UITouchTypePencil) ];
+        [self addGestureRecognizer:[pencilHoverGestureRecognizer autorelease]];
 #endif
 
         // Set up layer
@@ -146,7 +147,6 @@ inline ulong getTimeStamp(UIEvent *event)
 - (void)dealloc
 {
     [m_accessibleElements release];
-    [m_scrollGestureRecognizer release];
 
     [super dealloc];
 }
@@ -596,6 +596,34 @@ inline ulong getTimeStamp(UIEvent *event)
         self.platformWindow->window(), timestamp, iosIntegration->touchDevice());
 }
 
+- (void)handleMouseHover:(UIHoverGestureRecognizer *)recognizer
+{
+    if (!self.platformWindow)
+        return;
+
+    auto *window = self.platformWindow->window();
+    auto localPosition = QPointF::fromCGPoint([recognizer locationInView:self]);
+    auto globalPosition = self.platformWindow->mapToGlobalF(localPosition);
+
+    switch (recognizer.state) {
+    case UIGestureRecognizerStateBegan:
+        qCDebug(lcQpaMouse) << "🖱️ enter" << window << "local =" << localPosition;
+        QWindowSystemInterface::handleEnterEvent(window, localPosition, globalPosition);
+        break;
+    case UIGestureRecognizerStateEnded:
+        qCDebug(lcQpaMouse) << "🖱️ leave" << window;
+        QWindowSystemInterface::handleLeaveEvent(window);
+        break;
+    case UIGestureRecognizerStateChanged:
+        qCDebug(lcQpaMouse) << "🖱️ move" << "local =" << localPosition << "global =" << globalPosition;
+        QWindowSystemInterface::handleMouseEvent(window, localPosition, globalPosition,
+            Qt::NoButton, Qt::NoButton, QEvent::MouseMove);
+        break;
+    default:
+        qCWarning(lcQpaMouse) << "Unknown hover state for" << recognizer;
+    }
+}
+
 - (int)mapPressTypeToKey:(UIPress*)press withModifiers:(Qt::KeyboardModifiers)qtModifiers text:(QString &)text
 {
     switch (press.type) {
@@ -608,12 +636,17 @@ inline ulong getTimeStamp(UIEvent *event)
     case UIPressTypePlayPause: return Qt::Key_MediaTogglePlayPause;
     }
     if (@available(ios 13.4, *)) {
-        NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
-        Qt::Key key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
+        Qt::Key key = QAppleKeyMapper::fromUIKitKey(press.key.keyCode);
         if (key != Qt::Key_unknown)
             return key;
-        return QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
-                                             charactersIgnoringModifiers, text);
+        NSString *charactersIgnoringModifiers = press.key.charactersIgnoringModifiers;
+        key = QAppleKeyMapper::fromUIKitKey(charactersIgnoringModifiers);
+        if (key != Qt::Key_unknown)
+            return key;
+        key = QAppleKeyMapper::fromNSString(qtModifiers, press.key.characters,
+                                           charactersIgnoringModifiers, text);
+        if (key != Qt::Key_unknown)
+            return key;
     }
     return Qt::Key_unknown;
 }
@@ -784,9 +817,16 @@ inline ulong getTimeStamp(UIEvent *event)
 #endif // QT_CONFIG(wheelevent)
 
 #if QT_CONFIG(tabletevent)
-- (void)handleHover:(UIHoverGestureRecognizer *)recognizer
+- (void)handlePencilHover:(UIHoverGestureRecognizer *)recognizer
 {
     if (!self.platformWindow)
+        return;
+
+    // Just before lifting the pencil we might receive a hover event,
+    // but the event's position wrongly reflects the position where the
+    // pencil was first pressed instead of the current position, and
+    // semantically it doesn't make sense to send hover before release.
+    if (m_activePencilTouch)
         return;
 
     ulong timeStamp = [[NSProcessInfo processInfo] systemUptime] * 1000;

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiosglobal.h"
 #import "qiosviewcontroller.h"
@@ -484,7 +485,7 @@
     // -------------- Status bar style and visbility ---------------
 
     UIStatusBarStyle oldStatusBarStyle = self.preferredStatusBarStyle;
-    if (focusWindow->flags() & Qt::MaximizeUsingFullscreenGeometryHint) {
+    if (focusWindow->flags() & Qt::ExpandedClientAreaHint) {
         if (focusWindow->flags() & Qt::MacWindowToolBarButtonHint) {
             self.preferredStatusBarStyle = UIStatusBarStyleDefault;
         } else {

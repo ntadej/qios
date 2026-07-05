@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -10,6 +11,8 @@
 #include <QtGui/QtGui>
 #include "qioswindow.h"
 #include "quiaccessibilityelement.h"
+
+QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 
 QIOSPlatformAccessibility::QIOSPlatformAccessibility()
 {
@@ -51,8 +54,12 @@ void QIOSPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *even
     switch (event->type()) {
     case QAccessible::Announcement: {
         auto *announcementEvent = static_cast<QAccessibleAnnouncementEvent *>(event);
-        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
-                                        announcementEvent->message().toNSString());
+        const bool queueAnnouncement =
+                (announcementEvent->politeness() == QAccessible::AnnouncementPoliteness::Polite);
+        NSAttributedString *message = [[NSAttributedString alloc]
+                initWithString:announcementEvent->message().toNSString()
+                    attributes:@{UIAccessibilitySpeechAttributeQueueAnnouncement: @(queueAnnouncement)}];
+        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, [message autorelease]);
         break;
     }
     case QAccessible::Focus: {
@@ -69,6 +76,13 @@ void QIOSPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *even
     case QAccessible::NameChanged: {
         auto *element = [QMacAccessibilityElement elementWithId:event->uniqueId()];
         if (element == m_focusElement)
+            UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, element);
+        break;
+    }
+    case QAccessible::StateChanged:
+    case QAccessible::ValueChanged: {
+        auto *element = [QMacAccessibilityElement elementWithId:event->uniqueId()];
+        if (element)
             UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, element);
         break;
     }

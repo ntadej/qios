@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiostheme.h"
 
@@ -11,6 +12,7 @@
 #include <QtGui/private/qcoregraphics_p.h>
 
 #include <QtGui/private/qcoretextfontdatabase_p.h>
+#include <QtGui/private/qapplefileiconengine_p.h>
 #include <QtGui/private/qappleiconengine_p.h>
 #include <QtGui/private/qguiapplication_p.h>
 #include <qpa/qplatformintegration.h>
@@ -57,14 +59,19 @@ void QIOSTheme::initializeSystemPalette()
     Q_DECL_IMPORT QPalette qt_fusionPalette(void);
     s_systemPalette = qt_fusionPalette();
 
+    const auto disabledText = qt_mac_toQBrush(UIColor.tertiaryLabelColor.CGColor);
+
     s_systemPalette.setBrush(QPalette::Window, qt_mac_toQBrush(UIColor.systemGroupedBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::WindowText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::WindowText, disabledText);
 
     s_systemPalette.setBrush(QPalette::Base, qt_mac_toQBrush(UIColor.secondarySystemGroupedBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::Text, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::Text, disabledText);
 
     s_systemPalette.setBrush(QPalette::Button, qt_mac_toQBrush(UIColor.secondarySystemBackgroundColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::ButtonText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::ButtonText, disabledText);
 
     s_systemPalette.setBrush(QPalette::Active, QPalette::BrightText, qt_mac_toQBrush(UIColor.lightTextColor.CGColor));
     s_systemPalette.setBrush(QPalette::Active, QPalette::PlaceholderText, qt_mac_toQBrush(UIColor.placeholderTextColor.CGColor));
@@ -74,6 +81,9 @@ void QIOSTheme::initializeSystemPalette()
 
     s_systemPalette.setBrush(QPalette::Highlight, QColor(11, 70, 150, 60));
     s_systemPalette.setBrush(QPalette::HighlightedText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+
+    s_systemPalette.setBrush(QPalette::ToolTipText, qt_mac_toQBrush(UIColor.labelColor.CGColor));
+    s_systemPalette.setBrush(QPalette::Disabled, QPalette::ToolTipText, disabledText);
 
     if (@available(ios 15.0, *))
         s_systemPalette.setBrush(QPalette::Accent, qt_mac_toQBrush(UIColor.tintColor.CGColor));
@@ -192,6 +202,12 @@ void QIOSTheme::requestColorScheme(Qt::ColorScheme scheme)
 #endif
 }
 
+Qt::ContrastPreference QIOSTheme::contrastPreference() const
+{
+    return UIAccessibilityDarkerSystemColorsEnabled() ? Qt::ContrastPreference::HighContrast : Qt::ContrastPreference::NoPreference;
+}
+
+
 void QIOSTheme::applyTheme(UIWindow *window)
 {
     const UIUserInterfaceStyle style = []{
@@ -219,5 +235,11 @@ QIconEngine *QIOSTheme::createIconEngine(const QString &iconName) const
 {
     return new QAppleIconEngine(iconName);
 }
+
+QIcon QIOSTheme::fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions iconOptions) const
+{
+    return QIcon(new QAppleFileIconEngine(fileInfo, iconOptions));
+}
+
 
 QT_END_NAMESPACE

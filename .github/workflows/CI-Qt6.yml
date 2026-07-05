@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  QT_VERSION: 6.10.0
+  QT_VERSION: 6.11.1
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           path: source
           fetch-depth: 0
@@ -65,7 +65,7 @@ jobs:
             -G"Ninja Multi-Config" \
             -DCMAKE_CONFIGURATION_TYPES="Release;Debug" \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
             -DQT_GENERATE_SBOM=OFF \
             -DQT_HOST_PATH=$(readlink -f $QT_ROOT_DIR/../macos)
           ninja
@@ -78,7 +78,7 @@ jobs:
           popd
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: qios
           path: qios.tar.bz2
@@ -93,7 +93,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: qios
 

@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(qios
-    VERSION "6.10.0.0"
+    VERSION "6.11.1.0"
     LANGUAGES CXX C
 )
 
